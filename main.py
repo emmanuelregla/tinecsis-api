@@ -42,3 +42,10 @@ async def recibir_comprobante(data: Comprobante):
         "eNCF": data.eNCF
     }
 
+from typing import List
+
+@app.get("/comprobantes", response_model=List[Comprobante])
+async def listar_comprobantes():
+    query = comprobantes.select()
+    resultados = await database.fetch_all(query)
+    return resultados
