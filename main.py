@@ -42,10 +42,24 @@ async def recibir_comprobante(data: Comprobante):
         "eNCF": data.eNCF
     }
 
-from typing import List
+from typing import List, Optional
+from fastapi import Query
 
 @app.get("/comprobantes", response_model=List[Comprobante])
-async def listar_comprobantes():
+async def listar_comprobantes(
+    RNCEmisor: Optional[str] = Query(None),
+    eNCF: Optional[str] = Query(None),
+    FechaEmision: Optional[str] = Query(None)
+):
     query = comprobantes.select()
+    
+    # Aplicar filtros si se reciben
+    if RNCEmisor:
+        query = query.where(comprobantes.c.RNCEmisor == RNCEmisor)
+    if eNCF:
+        query = query.where(comprobantes.c.eNCF == eNCF)
+    if FechaEmision:
+        query = query.where(comprobantes.c.FechaEmision == FechaEmision)
+
     resultados = await database.fetch_all(query)
     return resultados
