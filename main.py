@@ -15,11 +15,37 @@ async def shutdown():
     await database.disconnect()
 
 # Modelo de entrada
+from pydantic import BaseModel, Field, validator
+import re
+from datetime import datetime
+
 class Comprobante(BaseModel):
-    RNCEmisor: str
-    eNCF: str
+    RNCEmisor: str = Field(..., min_length=9, max_length=11)
+    eNCF: str = Field(..., min_length=13, max_length=13)
     FechaEmision: str
-    XMLBase64: str
+    XMLBase64: str = Field(..., min_length=1)
+
+    @validator("RNCEmisor")
+    def validar_rnc(cls, v):
+        if not v.isdigit():
+            raise ValueError("RNCEmisor debe contener solo números")
+        if len(v) not in [9, 11]:
+            raise ValueError("RNCEmisor debe tener 9 o 11 dígitos")
+        return v
+
+    @validator("eNCF")
+    def validar_encf(cls, v):
+        if not re.match(r"^E\d{12}$", v):
+            raise ValueError("eNCF debe comenzar con 'E' seguido de 12 dígitos")
+        return v
+
+    @validator("FechaEmision")
+    def validar_fecha(cls, v):
+        try:
+            datetime.strptime(v, "%Y-%m-%d")
+        except ValueError:
+            raise ValueError("FechaEmision debe estar en formato YYYY-MM-DD")
+        return v
 
 # Ruta raíz para ver si la app está activa
 @app.get("/")
