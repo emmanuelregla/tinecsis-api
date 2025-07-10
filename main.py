@@ -10,6 +10,8 @@ from fastapi import Security
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 API_KEY=os.getenv("tinecsis_api_key")
+print(f"🔑 API_KEY cargada: {API_KEY}")
+
 
 app = FastAPI()
 
