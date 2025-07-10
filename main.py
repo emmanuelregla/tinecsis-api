@@ -1,8 +1,13 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 from db import database, comprobantes
+
 import os
 from fastapi import Header,HTTPException
+from fastapi.security.api_key import APIKeyHeader
+from fastapi import Security
+
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 API_KEY=os.getenv("tinecsis_api_key")
 
@@ -60,7 +65,7 @@ def root():
 @app.post("/recibir-comprobante")
 async def recibir_comprobante(
     data: Comprobante,
-    x_api_key: str = Header(...)
+    x_api_key: str = Security(api_key_header)
 ):
     if x_api_key != API_KEY:
         raise HTTPException(status_code=401, detail="No autorizado")
