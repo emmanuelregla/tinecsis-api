@@ -9,7 +9,7 @@ from fastapi import Security
 
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
-API_KEY=os.getenv("miclave123456")
+API_KEY=os.getenv("API_KEY")
 print(f"🔑 API_KEY cargada: {API_KEY}")
 
 
