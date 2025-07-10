@@ -26,19 +26,32 @@ class Comprobante(BaseModel):
 def root():
     return {"message": "Servidor activo"}
 
-# Endpoint para recibir e insertar comprobantes
 @app.post("/recibir-comprobante")
 async def recibir_comprobante(data: Comprobante):
+    # Verificar si ya existe un comprobante con ese eNCF y RNCEmisor
+    query = comprobantes.select().where(
+        (comprobantes.c.eNCF == data.eNCF) &
+        (comprobantes.c.RNCEmisor == data.RNCEmisor)
+    )
+    existente = await database.fetch_one(query)
+    if existente:
+        return {
+            "mensaje": "❌ Este comprobante ya ha sido registrado.",
+            "eNCF": data.eNCF
+        }
+
+    # Insertar nuevo comprobante
     query = comprobantes.insert().values(
         RNCEmisor=data.RNCEmisor,
         eNCF=data.eNCF,
         FechaEmision=data.FechaEmision,
         XMLBase64=data.XMLBase64
     )
-    comprobante_id = await database.execute(query)
+    last_record_id = await database.execute(query)
+
     return {
-        "mensaje": "Comprobante recibido correctamente",
-        "id": comprobante_id,
+        "mensaje": "✅ Comprobante recibido correctamente",
+        "id": last_record_id,
         "eNCF": data.eNCF
     }
 
