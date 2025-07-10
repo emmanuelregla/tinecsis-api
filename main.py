@@ -4,7 +4,7 @@ from db import database, comprobantes
 import os
 from fastapi import Header,HTTPException
 
-API_KEY=os.getenv("T1N3C515_2025")
+API_KEY=os.getenv("tinecsis_api_key")
 
 app = FastAPI()
 
