@@ -1,6 +1,10 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 from db import database, comprobantes
+import os
+from fastapi import Header,HTTPException
+
+API_KEY=os.getenv("T1N3C515_2025")
 
 app = FastAPI()
 
@@ -52,9 +56,16 @@ class Comprobante(BaseModel):
 def root():
     return {"message": "Servidor activo"}
 
+# Insertar Comprobante envio por POST
 @app.post("/recibir-comprobante")
-async def recibir_comprobante(data: Comprobante):
-    # Verificar si ya existe un comprobante con ese eNCF y RNCEmisor
+async def recibir_comprobante(
+    data: Comprobante,
+    x_api_key: str = Header(...)
+):
+    if x_api_key != API_KEY:
+        raise HTTPException(status_code=401, detail="No autorizado")
+
+    # Verificación de duplicado (sin cambios)
     query = comprobantes.select().where(
         (comprobantes.c.eNCF == data.eNCF) &
         (comprobantes.c.RNCEmisor == data.RNCEmisor)
@@ -66,7 +77,6 @@ async def recibir_comprobante(data: Comprobante):
             "eNCF": data.eNCF
         }
 
-    # Insertar nuevo comprobante
     query = comprobantes.insert().values(
         RNCEmisor=data.RNCEmisor,
         eNCF=data.eNCF,
@@ -80,6 +90,7 @@ async def recibir_comprobante(data: Comprobante):
         "id": last_record_id,
         "eNCF": data.eNCF
     }
+
 
 from typing import List, Optional
 from fastapi import Query
