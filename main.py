@@ -7,6 +7,10 @@ from fastapi import Header,HTTPException
 from fastapi.security.api_key import APIKeyHeader
 from fastapi import Security
 
+import base64
+import xml.etree.ElementTree as ET
+
+
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 API_KEY=os.getenv("API_KEY")
@@ -72,7 +76,14 @@ async def recibir_comprobante(
     if x_api_key != API_KEY:
         raise HTTPException(status_code=401, detail="No autorizado")
 
-    # Verificación de duplicado (sin cambios)
+    # 🔍 Decodificar el XML base64
+    try:
+        decoded_xml = base64.b64decode(data.XMLBase64).decode("utf-8")
+        ET.fromstring(decoded_xml)  # valida que esté bien formado
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"XML inválido: {str(e)}")
+
+    # 🔁 Verificar duplicado
     query = comprobantes.select().where(
         (comprobantes.c.eNCF == data.eNCF) &
         (comprobantes.c.RNCEmisor == data.RNCEmisor)
@@ -84,6 +95,7 @@ async def recibir_comprobante(
             "eNCF": data.eNCF
         }
 
+    # Guardar comprobante
     query = comprobantes.insert().values(
         RNCEmisor=data.RNCEmisor,
         eNCF=data.eNCF,
@@ -97,7 +109,6 @@ async def recibir_comprobante(
         "id": last_record_id,
         "eNCF": data.eNCF
     }
-
 
 from typing import List, Optional
 from fastapi import Query
