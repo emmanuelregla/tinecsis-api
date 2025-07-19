@@ -83,9 +83,18 @@ async def recibir_comprobante(
     try:
         decoded_xml = base64.b64decode(data.XMLBase64).decode("utf-8")
         ET.fromstring(decoded_xml)  # valida que esté bien formado
+        
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"XML inválido: {str(e)}")
     
+
+    # Validar contra el esquema XSD oficial de la DGII
+    try:
+        schema = xmlschema.XMLSchema("schemas/comprobante_31.xsd")
+        schema.validate(io.StringIO(decoded_xml))  # lanza excepción si el XML no cumple
+    except xmlschema.XMLSchemaException as e:
+        raise HTTPException(status_code=400, detail=f"XML no válido según XSD: {str(e)}")
+
 
     # 🔁 Verificar duplicado
     query = comprobantes.select().where(
@@ -135,3 +144,6 @@ async def listar_comprobantes(
 
     resultados = await database.fetch_all(query)
     return resultados
+# comentario temporal para activar deploy
+# comentario temporal para activar deploy2
+
