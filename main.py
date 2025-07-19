@@ -10,6 +10,9 @@ from fastapi import Security
 import base64
 import xml.etree.ElementTree as ET
 
+import xmlschema
+import io
+
 
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
@@ -82,6 +85,7 @@ async def recibir_comprobante(
         ET.fromstring(decoded_xml)  # valida que esté bien formado
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"XML inválido: {str(e)}")
+    
 
     # 🔁 Verificar duplicado
     query = comprobantes.select().where(
