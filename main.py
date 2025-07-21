@@ -89,11 +89,11 @@ async def recibir_comprobante(
     
 
     # Validar contra el esquema XSD oficial de la DGII
-    try:
-        schema = xmlschema.XMLSchema("schemas/comprobante_31.xsd")
-        schema.validate(io.StringIO(decoded_xml))  # lanza excepción si el XML no cumple
-    except xmlschema.XMLSchemaException as e:
-        raise HTTPException(status_code=400, detail=f"XML no válido según XSD: {str(e)}")
+    # try:
+    #     schema = xmlschema.XMLSchema("schemas/comprobante_31.xsd")
+    #     schema.validate(io.StringIO(decoded_xml))  # lanza excepción si el XML no cumple
+    # except xmlschema.XMLSchemaException as e:
+    #     raise HTTPException(status_code=400, detail=f"XML no válido según XSD: {str(e)}")
 
 
     # 🔁 Verificar duplicado
