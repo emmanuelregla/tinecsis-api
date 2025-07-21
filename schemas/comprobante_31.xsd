@@ -1692,5 +1692,12 @@
       <xs:maxLength value="1000"/>
     </xs:restriction>
   </xs:simpleType>
-  <!--============================================================-->
+ <!--============================================================-->
+  <xs:simpleType name="IndicadorServicioTodoIncluidoType">
+  <xs:restriction base="xs:int">
+    <xs:enumeration value="1"/>
+    <xs:enumeration value="2"/>
+    <xs:enumeration value="3"/>
+  </xs:restriction>
+</xs:simpleType>
 </xs:schema>
