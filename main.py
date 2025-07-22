@@ -13,6 +13,9 @@ import xml.etree.ElementTree as ET
 import xmlschema
 import io
 
+import xml.etree.ElementTree as ET
+import base64
+
 
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
@@ -83,11 +86,27 @@ async def recibir_comprobante(
     try:
         decoded_xml = base64.b64decode(data.XMLBase64).decode("utf-8")
         ET.fromstring(decoded_xml)  # valida que esté bien formado
-        
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"XML inválido: {str(e)}")
-    
 
+    # Extraer valores del XML
+    try:   
+        eNCF_xml = root.findtext(".//IdDoc/eNCF")
+        rnc_emisor_xml = root.findtext(".//Emisor/RNCEmisor")
+        fecha_emision_xml = root.findtext(".//Emisor/FechaEmision")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error al leer XML: {str(e)}")
+
+    # Validar consistencia con el JSON recibido
+    if eNCF_xml != data.eNCF:
+        raise HTTPException(status_code=400, detail=f"eNCF en XML ({eNCF_xml}) no coincide con JSON ({data.eNCF})")
+
+    if rnc_emisor_xml != data.RNCEmisor:
+        raise HTTPException(status_code=400, detail=f"RNCEmisor en XML ({rnc_emisor_xml}) no coincide con JSON ({data.RNCEmisor})")
+
+    if fecha_emision_xml != data.FechaEmision:
+        raise HTTPException(status_code=400, detail=f"FechaEmision en XML ({fecha_emision_xml}) no coincide con JSON ({data.FechaEmision})")        
+    
     # Validar contra el esquema XSD oficial de la DGII
     # try:
     #     schema = xmlschema.XMLSchema("schemas/comprobante_31.xsd")
