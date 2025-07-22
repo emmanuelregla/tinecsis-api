@@ -85,7 +85,7 @@ async def recibir_comprobante(
     # 🔍 Decodificar el XML base64
     try:
         decoded_xml = base64.b64decode(data.XMLBase64).decode("utf-8")
-        ET.fromstring(decoded_xml)  # valida que esté bien formado
+        root = ET.fromstring(decoded_xml) # valida que esté bien formado
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"XML inválido: {str(e)}")
 
