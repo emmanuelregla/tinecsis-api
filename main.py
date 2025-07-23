@@ -85,12 +85,14 @@ async def recibir_comprobante(
     # 🔍 Decodificar el XML base64
     try:
         decoded_xml = base64.b64decode(data.XMLBase64).decode("utf-8")
-        root = ET.fromstring(decoded_xml) # valida que esté bien formado
+        root = ET.fromstring(decoded_xml)  # valida que esté bien formado
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"XML inválido: {str(e)}")
 
+    from datetime import datetime
+
     # Extraer valores del XML
-    try:   
+    try:
         eNCF_xml = root.findtext(".//IdDoc/eNCF")
         rnc_emisor_xml = root.findtext(".//Emisor/RNCEmisor")
         fecha_emision_xml = root.findtext(".//Emisor/FechaEmision")
@@ -104,9 +106,19 @@ async def recibir_comprobante(
     if rnc_emisor_xml != data.RNCEmisor:
         raise HTTPException(status_code=400, detail=f"RNCEmisor en XML ({rnc_emisor_xml}) no coincide con JSON ({data.RNCEmisor})")
 
-    if fecha_emision_xml != data.FechaEmision:
-        raise HTTPException(status_code=400, detail=f"FechaEmision en XML ({fecha_emision_xml}) no coincide con JSON ({data.FechaEmision})")        
-    
+    # Validar FechaEmision comparando formatos
+    try:
+        fecha_json = datetime.strptime(data.FechaEmision, "%Y-%m-%d").date()
+        fecha_xml = datetime.strptime(fecha_emision_xml, "%d-%m-%Y").date()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error al interpretar FechaEmision: {str(e)}")
+
+    if fecha_json != fecha_xml:
+        raise HTTPException(
+            status_code=400,
+            detail=f"FechaEmision en XML ({fecha_emision_xml}) no coincide con JSON ({data.FechaEmision})"
+        )
+        
     # Validar contra el esquema XSD oficial de la DGII
     # try:
     #     schema = xmlschema.XMLSchema("schemas/comprobante_31.xsd")
