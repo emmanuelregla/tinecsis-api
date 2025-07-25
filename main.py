@@ -16,6 +16,9 @@ import io
 import xml.etree.ElementTree as ET
 import base64
 
+import hashlib
+from fastapi import Path
+
 
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
@@ -175,6 +178,39 @@ async def listar_comprobantes(
 
     resultados = await database.fetch_all(query)
     return resultados
+
+# CON EL SIGUIENTE CODIGO SIMULA EL ENVIO AL COMPROBANTE A LA DGII
+
+@app.post("/enviar-a-dgii/{encf}")
+async def enviar_a_dgii(encf: str):
+    # Buscar comprobante en la base de datos
+    query = comprobantes.select().where(comprobantes.c.eNCF == encf)
+    comprobante = await database.fetch_one(query)
+
+    if not comprobante:
+        raise HTTPException(status_code=404, detail=f"Comprobante {encf} no encontrado")
+
+    # Decodificar XML original desde base64
+    try:
+        xml_bytes = base64.b64decode(comprobante["XMLBase64"])
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error al decodificar XML base64: {str(e)}")
+
+    # Calcular hash SHA256 en base64
+    sha256_hash = hashlib.sha256(xml_bytes).digest()
+    hash_base64 = base64.b64encode(sha256_hash).decode("utf-8")
+
+    # Preparar estructura para envío a DGII (simulada por ahora)
+    envio_dgii = {
+        "RNCEmisor": comprobante["RNCEmisor"],
+        "eNCF": comprobante["eNCF"],
+        "FechaEmision": comprobante["FechaEmision"],
+        "XMLFirmado": comprobante["XMLBase64"],  # asumimos que aún no está firmado
+        "HashXML": hash_base64
+    }
+
+    return envio_dgii
+
 # comentario temporal para activar deploy
 # comentario temporal para activar deploy2
 
