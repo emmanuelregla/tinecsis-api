@@ -1,82 +1,37 @@
-from fastapi import FastAPI
+
+from fastapi import FastAPI, HTTPException, Security
+from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
 from db import database, comprobantes
-
-import os
-from fastapi import Header,HTTPException
-from fastapi.security.api_key import APIKeyHeader
-from fastapi import Security
-
 import base64
-import xml.etree.ElementTree as ET
-
-import xmlschema
-import io
-
-import xml.etree.ElementTree as ET
-import base64
-
 import hashlib
-from fastapi import Path
-
-
-api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
-
-API_KEY=os.getenv("API_KEY")
-print(f"🔑 API_KEY cargada: {API_KEY}")
-
+import xml.etree.ElementTree as ET
+from datetime import datetime
+import httpx
 
 app = FastAPI()
 
-# Conexión a la base de datos al iniciar
+# 🔐 Seguridad: API Key para autenticación simple
+API_KEY = "miclave123456"
+api_key_header = APIKeyHeader(name="X-API-Key")
+
+# 🧾 Modelo de entrada para comprobantes
+class Comprobante(BaseModel):
+    RNCEmisor: str
+    eNCF: str
+    FechaEmision: str
+    XMLBase64: str
+
+# 🚀 Conexión inicial con base de datos
 @app.on_event("startup")
 async def startup():
     await database.connect()
 
-# Desconexión al cerrar la aplicación
 @app.on_event("shutdown")
 async def shutdown():
     await database.disconnect()
 
-# Modelo de entrada
-from pydantic import BaseModel, Field, validator
-import re
-from datetime import datetime
-
-class Comprobante(BaseModel):
-    RNCEmisor: str = Field(..., min_length=9, max_length=11)
-    eNCF: str = Field(..., min_length=13, max_length=13)
-    FechaEmision: str
-    XMLBase64: str = Field(..., min_length=1)
-
-    @validator("RNCEmisor")
-    def validar_rnc(cls, v):
-        if not v.isdigit():
-            raise ValueError("RNCEmisor debe contener solo números")
-        if len(v) not in [9, 11]:
-            raise ValueError("RNCEmisor debe tener 9 o 11 dígitos")
-        return v
-
-    @validator("eNCF")
-    def validar_encf(cls, v):
-        if not re.match(r"^E\d{12}$", v):
-            raise ValueError("eNCF debe comenzar con 'E' seguido de 12 dígitos")
-        return v
-
-    @validator("FechaEmision")
-    def validar_fecha(cls, v):
-        try:
-            datetime.strptime(v, "%Y-%m-%d")
-        except ValueError:
-            raise ValueError("FechaEmision debe estar en formato YYYY-MM-DD")
-        return v
-
-# Ruta raíz para ver si la app está activa
-@app.get("/")
-def root():
-    return {"message": "Servidor activo"}
-
-# Insertar Comprobante envio por POST
+# 📥 POST: Recibir nuevo comprobante
 @app.post("/recibir-comprobante")
 async def recibir_comprobante(
     data: Comprobante,
@@ -85,16 +40,26 @@ async def recibir_comprobante(
     if x_api_key != API_KEY:
         raise HTTPException(status_code=401, detail="No autorizado")
 
-    # 🔍 Decodificar el XML base64
+    # ✅ Validar si ya existe
+    query = comprobantes.select().where(
+        (comprobantes.c.eNCF == data.eNCF) &
+        (comprobantes.c.RNCEmisor == data.RNCEmisor)
+    )
+    comprobante_existente = await database.fetch_one(query)
+    if comprobante_existente:
+        return {
+            "mensaje": "❌ Este comprobante ya ha sido registrado.",
+            "eNCF": data.eNCF
+        }
+
+    # 🔍 Validar y parsear XML
     try:
         decoded_xml = base64.b64decode(data.XMLBase64).decode("utf-8")
-        root = ET.fromstring(decoded_xml)  # valida que esté bien formado
+        root = ET.fromstring(decoded_xml)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"XML inválido: {str(e)}")
 
-    from datetime import datetime
-
-    # Extraer valores del XML
+    # 🧪 Extraer datos clave del XML y validar con JSON
     try:
         eNCF_xml = root.findtext(".//IdDoc/eNCF")
         rnc_emisor_xml = root.findtext(".//Emisor/RNCEmisor")
@@ -102,14 +67,12 @@ async def recibir_comprobante(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error al leer XML: {str(e)}")
 
-    # Validar consistencia con el JSON recibido
     if eNCF_xml != data.eNCF:
         raise HTTPException(status_code=400, detail=f"eNCF en XML ({eNCF_xml}) no coincide con JSON ({data.eNCF})")
 
     if rnc_emisor_xml != data.RNCEmisor:
         raise HTTPException(status_code=400, detail=f"RNCEmisor en XML ({rnc_emisor_xml}) no coincide con JSON ({data.RNCEmisor})")
 
-    # Validar FechaEmision comparando formatos
     try:
         fecha_json = datetime.strptime(data.FechaEmision, "%Y-%m-%d").date()
         fecha_xml = datetime.strptime(fecha_emision_xml, "%d-%m-%Y").date()
@@ -121,115 +84,61 @@ async def recibir_comprobante(
             status_code=400,
             detail=f"FechaEmision en XML ({fecha_emision_xml}) no coincide con JSON ({data.FechaEmision})"
         )
-        
-    # Validar contra el esquema XSD oficial de la DGII
-    # try:
-    #     schema = xmlschema.XMLSchema("schemas/comprobante_31.xsd")
-    #     schema.validate(io.StringIO(decoded_xml))  # lanza excepción si el XML no cumple
-    # except xmlschema.XMLSchemaException as e:
-    #     raise HTTPException(status_code=400, detail=f"XML no válido según XSD: {str(e)}")
 
-
-    # 🔁 Verificar duplicado
-    query = comprobantes.select().where(
-        (comprobantes.c.eNCF == data.eNCF) &
-        (comprobantes.c.RNCEmisor == data.RNCEmisor)
-    )
-    existente = await database.fetch_one(query)
-    if existente:
-        return {
-            "mensaje": "❌ Este comprobante ya ha sido registrado.",
-            "eNCF": data.eNCF
-        }
-
-    # Guardar comprobante
+    # 💾 Insertar en base de datos
     query = comprobantes.insert().values(
         RNCEmisor=data.RNCEmisor,
         eNCF=data.eNCF,
         FechaEmision=data.FechaEmision,
         XMLBase64=data.XMLBase64
     )
-    last_record_id = await database.execute(query)
+    last_id = await database.execute(query)
 
     return {
         "mensaje": "✅ Comprobante recibido correctamente",
-        "id": last_record_id,
-        "eNCF": data.eNCF
+        "eNCF": data.eNCF,
+        "id": last_id
     }
 
-from typing import List, Optional
-from fastapi import Query
-
-@app.get("/comprobantes", response_model=List[Comprobante])
-async def listar_comprobantes(
-    RNCEmisor: Optional[str] = Query(None),
-    eNCF: Optional[str] = Query(None),
-    FechaEmision: Optional[str] = Query(None)
-):
+# 🔍 GET: Consultar todos los comprobantes
+@app.get("/comprobantes")
+async def listar_comprobantes():
     query = comprobantes.select()
-    
-    # Aplicar filtros si se reciben
-    if RNCEmisor:
-        query = query.where(comprobantes.c.RNCEmisor == RNCEmisor)
-    if eNCF:
-        query = query.where(comprobantes.c.eNCF == eNCF)
-    if FechaEmision:
-        query = query.where(comprobantes.c.FechaEmision == FechaEmision)
+    return await database.fetch_all(query)
 
-    resultados = await database.fetch_all(query)
-    return resultados
-
-# CON EL SIGUIENTE CODIGO SIMULA EL ENVIO AL COMPROBANTE A LA DGII
-
+# 📤 PREPARAR: JSON simulado para enviar a la DGII
 @app.post("/enviar-a-dgii/{encf}")
-async def enviar_a_dgii(encf: str):
-    # Buscar comprobante en la base de datos
+async def preparar_envio_dgii(encf: str):
     query = comprobantes.select().where(comprobantes.c.eNCF == encf)
     comprobante = await database.fetch_one(query)
 
     if not comprobante:
-        raise HTTPException(status_code=404, detail=f"Comprobante {encf} no encontrado")
+        raise HTTPException(status_code=404, detail="Comprobante no encontrado")
 
-    # Decodificar XML original desde base64
     try:
         xml_bytes = base64.b64decode(comprobante["XMLBase64"])
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error al decodificar XML base64: {str(e)}")
 
-    # Calcular hash SHA256 en base64
-    sha256_hash = hashlib.sha256(xml_bytes).digest()
-    hash_base64 = base64.b64encode(sha256_hash).decode("utf-8")
+    hash_bytes = hashlib.sha256(xml_bytes).digest()
+    hash_base64 = base64.b64encode(hash_bytes).decode("utf-8")
 
-    # Preparar estructura para envío a DGII (simulada por ahora)
-    envio_dgii = {
+    payload = {
         "RNCEmisor": comprobante["RNCEmisor"],
         "eNCF": comprobante["eNCF"],
         "FechaEmision": comprobante["FechaEmision"],
-        "XMLFirmado": comprobante["XMLBase64"],  # asumimos que aún no está firmado
+        "XMLFirmado": comprobante["XMLBase64"],  # Aún no firmado realmente
         "HashXML": hash_base64
     }
 
-    return envio_dgii
+    return payload
 
-# comentario temporal para activar deploy
-# comentario temporal para activar deploy2
-
-#AQUI COMIENZA A TRABAJAR CON SIMULACION ENVIO A LA DGII
-
-#from fastapi import FastAPI, HTTPException
-import httpx
-#import base64
-#import hashlib
-#from db import comprobantes, database
-
-app = FastAPI()
-
-DGII_URL_SIMULADA = "https://api.dgii.gob.do/testecf/simulacion/recepcion"
-FAKE_TOKEN = "eyJhbGciOiFakeTokenParaSimulacion1234567890"
-
+# 🚀 SIMULACIÓN: Enviar a DGII (simulada con token ficticio)
 @app.post("/dgii/enviar/{encf}")
 async def enviar_a_dgii(encf: str):
-    # 1. Buscar comprobante en la base de datos
+    DGII_URL_SIMULADA = "https://httpbin.org/post"  # URL de prueba funcional
+    FAKE_TOKEN = "eyJhbGciOiFakeTokenParaSimulacion1234567890"
+
     query = comprobantes.select().where(comprobantes.c.eNCF == encf)
     comprobante = await database.fetch_one(query)
 
@@ -238,19 +147,16 @@ async def enviar_a_dgii(encf: str):
 
     try:
         xml_bytes = base64.b64decode(comprobante["XMLBase64"])
+        hash_bytes = hashlib.sha256(xml_bytes).digest()
+        hash_base64 = base64.b64encode(hash_bytes).decode("utf-8")
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Error al decodificar XML: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Error al preparar XML: {str(e)}")
 
-    # 2. Calcular HashXML (SHA256 base64)
-    hash_bytes = hashlib.sha256(xml_bytes).digest()
-    hash_base64 = base64.b64encode(hash_bytes).decode("utf-8")
-
-    # 3. Preparar payload de envío
     payload = {
         "RNCEmisor": comprobante["RNCEmisor"],
         "eNCF": comprobante["eNCF"],
         "FechaEmision": comprobante["FechaEmision"],
-        "XMLFirmado": comprobante["XMLBase64"],  # simulando que ya viene firmado
+        "XMLFirmado": comprobante["XMLBase64"],
         "HashXML": hash_base64
     }
 
@@ -259,15 +165,12 @@ async def enviar_a_dgii(encf: str):
         "Content-Type": "application/json"
     }
 
-    # 4. Enviar a la URL simulada de la DGII
     async with httpx.AsyncClient() as client:
         try:
             response = await client.post(DGII_URL_SIMULADA, json=payload, headers=headers)
             return {
                 "status_code": response.status_code,
-                "dgii_response": response.json() if response.headers.get("Content-Type") == "application/json" else response.text
+                "dgii_response": response.json()
             }
         except httpx.RequestError as e:
             raise HTTPException(status_code=500, detail=f"Error al conectar con la DGII simulada: {str(e)}")
-
-# comentario temporal para activar deploy3
