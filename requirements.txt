@@ -1,9 +1,8 @@
 fastapi
-uvicorn[standard]
-pydantic
+uvicorn
+httpx
 sqlalchemy
 asyncpg
 databases
-psycopg[binary]
+psycopg2-binary
 xmlschema
-httpx
