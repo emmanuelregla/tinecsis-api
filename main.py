@@ -216,11 +216,11 @@ async def enviar_a_dgii(encf: str):
 
 #AQUI COMIENZA A TRABAJAR CON SIMULACION ENVIO A LA DGII
 
-from fastapi import FastAPI, HTTPException
+#from fastapi import FastAPI, HTTPException
 import httpx
-import base64
-import hashlib
-from db import comprobantes, database
+#import base64
+#import hashlib
+#from db import comprobantes, database
 
 app = FastAPI()
 
