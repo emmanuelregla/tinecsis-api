@@ -214,3 +214,60 @@ async def enviar_a_dgii(encf: str):
 # comentario temporal para activar deploy
 # comentario temporal para activar deploy2
 
+#AQUI COMIENZA A TRABAJAR CON SIMULACION ENVIO A LA DGII
+
+from fastapi import FastAPI, HTTPException
+import httpx
+import base64
+import hashlib
+from db import comprobantes, database
+
+app = FastAPI()
+
+DGII_URL_SIMULADA = "https://api.dgii.gob.do/testecf/simulacion/recepcion"
+FAKE_TOKEN = "eyJhbGciOiFakeTokenParaSimulacion1234567890"
+
+@app.post("/dgii/enviar/{encf}")
+async def enviar_a_dgii(encf: str):
+    # 1. Buscar comprobante en la base de datos
+    query = comprobantes.select().where(comprobantes.c.eNCF == encf)
+    comprobante = await database.fetch_one(query)
+
+    if not comprobante:
+        raise HTTPException(status_code=404, detail=f"Comprobante {encf} no encontrado")
+
+    try:
+        xml_bytes = base64.b64decode(comprobante["XMLBase64"])
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error al decodificar XML: {str(e)}")
+
+    # 2. Calcular HashXML (SHA256 base64)
+    hash_bytes = hashlib.sha256(xml_bytes).digest()
+    hash_base64 = base64.b64encode(hash_bytes).decode("utf-8")
+
+    # 3. Preparar payload de envío
+    payload = {
+        "RNCEmisor": comprobante["RNCEmisor"],
+        "eNCF": comprobante["eNCF"],
+        "FechaEmision": comprobante["FechaEmision"],
+        "XMLFirmado": comprobante["XMLBase64"],  # simulando que ya viene firmado
+        "HashXML": hash_base64
+    }
+
+    headers = {
+        "Authorization": f"Bearer {FAKE_TOKEN}",
+        "Content-Type": "application/json"
+    }
+
+    # 4. Enviar a la URL simulada de la DGII
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(DGII_URL_SIMULADA, json=payload, headers=headers)
+            return {
+                "status_code": response.status_code,
+                "dgii_response": response.json() if response.headers.get("Content-Type") == "application/json" else response.text
+            }
+        except httpx.RequestError as e:
+            raise HTTPException(status_code=500, detail=f"Error al conectar con la DGII simulada: {str(e)}")
+
+# comentario temporal para activar deploy3
