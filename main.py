@@ -180,9 +180,12 @@ async def enviar_a_dgii(encf: str):
 @app.get("/dgii/semilla", summary="Solicitar semilla a DGII (testecf)")
 async def solicitar_semilla():
     url_semilla = "https://ecf.dgii.gov.do/testecf/Autenticacion/Solicitar"
+    headers = {
+        "User-Agent": "TinecsisECFClient/1.0"
+    }
     try:
         async with httpx.AsyncClient(verify=False) as client:
-            response = await client.get(url_semilla)
+            response = await client.get(url_semilla, headers=headers)
             response.raise_for_status()
             return {"semilla": response.text}
     except httpx.HTTPStatusError as http_err:
