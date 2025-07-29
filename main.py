@@ -177,18 +177,31 @@ async def enviar_a_dgii(encf: str):
 
 
 # Endpoint para solicitar semilla oficial de la DGII
+from fastapi.responses import Response
+
 @app.get("/dgii/semilla", summary="Solicitar semilla a DGII (testecf)")
 async def solicitar_semilla():
-    url_semilla = "https://ecf.dgii.gov.do/testecf/Autenticacion/Solicitar"
+    url = "https://ecf.dgii.gov.do/testecf/Autenticacion/Solicitar"
     headers = {
-        "User-Agent": "TinecsisECFClient/1.0"
+        "Content-Type": "text/xml; charset=utf-8",
+        "SOAPAction": "https://DGII.gov.do/webservices/Solicitar"
     }
+    body = """<?xml version="1.0" encoding="utf-8"?>
+    <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+                   xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+        <soap:Body>
+            <Solicitar xmlns="https://DGII.gov.do/webservices" />
+        </soap:Body>
+    </soap:Envelope>"""
+
     try:
-        async with httpx.AsyncClient(verify=False) as client:
-            response = await client.get(url_semilla, headers=headers)
+        async with httpx.AsyncClient(verify=False, timeout=10) as client:
+            response = await client.post(url, data=body, headers=headers)
             response.raise_for_status()
-            return {"semilla": response.text}
+            return Response(content=response.text, media_type="application/xml")
     except httpx.HTTPStatusError as http_err:
         raise HTTPException(status_code=response.status_code, detail=f"Error HTTP: {http_err}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al solicitar semilla: {str(e)}")
+
