@@ -174,3 +174,18 @@ async def enviar_a_dgii(encf: str):
             }
         except httpx.RequestError as e:
             raise HTTPException(status_code=500, detail=f"Error al conectar con la DGII simulada: {str(e)}")
+
+
+# Endpoint para solicitar semilla oficial de la DGII
+@app.get("/dgii/semilla", summary="Solicitar semilla a DGII (testecf)")
+async def solicitar_semilla():
+    url_semilla = "https://ecf.dgii.gov.do/testecf/Autenticacion/Solicitar"
+    try:
+        async with httpx.AsyncClient(verify=False) as client:
+            response = await client.get(url_semilla)
+            response.raise_for_status()
+            return {"semilla": response.text}
+    except httpx.HTTPStatusError as http_err:
+        raise HTTPException(status_code=response.status_code, detail=f"Error HTTP: {http_err}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al solicitar semilla: {str(e)}")
