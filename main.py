@@ -182,22 +182,9 @@ from fastapi.responses import Response
 @app.get("/dgii/semilla", summary="Solicitar semilla a DGII (testecf)")
 async def solicitar_semilla():
     url = "https://ecf.dgii.gov.do/testecf/Autenticacion/Solicitar"
-    headers = {
-        "Content-Type": "text/xml; charset=utf-8",
-        "SOAPAction": "https://DGII.gov.do/webservices/Solicitar"
-    }
-    body = """<?xml version="1.0" encoding="utf-8"?>
-    <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-                   xmlns:xsd="http://www.w3.org/2001/XMLSchema"
-                   xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
-        <soap:Body>
-            <Solicitar xmlns="https://DGII.gov.do/webservices" />
-        </soap:Body>
-    </soap:Envelope>"""
-
     try:
         async with httpx.AsyncClient(verify=False, timeout=10) as client:
-            response = await client.post(url, data=body, headers=headers)
+            response = await client.get(url)
             response.raise_for_status()
             return Response(content=response.text, media_type="application/xml")
     except httpx.HTTPStatusError as http_err:
