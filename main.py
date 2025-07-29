@@ -179,7 +179,7 @@ async def enviar_a_dgii(encf: str):
 # Endpoint para solicitar semilla oficial de la DGII
 @app.get("/dgii/semilla", summary="Solicitar semilla a DGII (testecf)")
 async def solicitar_semilla():
-    url_semilla = "https://ecf.dgii.gov.do/testecf/Autenticacion/Solicitar"
+    url_semilla = "https://ecf.dgii.gov.do/testecf/Autenticacion/semilla"
     headers = {
         "User-Agent": "TinecsisECFClient/1.0"
     }
