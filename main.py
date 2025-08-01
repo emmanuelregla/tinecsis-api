@@ -9,6 +9,9 @@ import xml.etree.ElementTree as ET
 from datetime import datetime
 import httpx
 
+from auth import router as auth_router
+
+
 app = FastAPI()
 
 # 🔐 Seguridad: API Key para autenticación simple
@@ -192,3 +195,4 @@ async def solicitar_semilla():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al solicitar semilla: {str(e)}")
 
+app.include_router(auth_router)
