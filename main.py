@@ -196,3 +196,4 @@ async def solicitar_semilla():
         raise HTTPException(status_code=500, detail=f"Error al solicitar semilla: {str(e)}")
 
 app.include_router(auth_router)
+#comentario para push
