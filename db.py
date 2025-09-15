@@ -1,26 +1,38 @@
 import os
-import databases
-import sqlalchemy
+from databases import Database
+from sqlalchemy import create_engine, MetaData, Table, Column, String
+from dotenv import load_dotenv
+load_dotenv(dotenv_path=".env")  # Asegura que lo busque explícitamente
 
-# URL de la base de datos desde variable de entorno
+
+# Cargar las variables desde el archivo .env
+load_dotenv()
+
+# Construir la URL correctamente
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 # Conexión a la base de datos
-database = databases.Database(DATABASE_URL)
-metadata = sqlalchemy.MetaData()
+database = Database(DATABASE_URL)
 
-# Tabla comprobantes
-comprobantes = sqlalchemy.Table(
+# Crear engine para SQLAlchemy
+engine = create_engine(DATABASE_URL)
+metadata = MetaData()
+
+# Definir una tabla para probar
+comprobantes = Table(
     "comprobantes",
     metadata,
-    sqlalchemy.Column("id", sqlalchemy.Integer, primary_key=True),
-    sqlalchemy.Column("RNCEmisor", sqlalchemy.String),
-    sqlalchemy.Column("eNCF", sqlalchemy.String),
-    sqlalchemy.Column("FechaEmision", sqlalchemy.String),
-    sqlalchemy.Column("XMLBase64", sqlalchemy.Text),
+    Column("eNCF", String, primary_key=True),
+    Column("RNCEmisor", String),
+    Column("FechaEmision", String),
+    Column("XMLBase64", String),
 )
 
-# Crear engine y las tablas - VAMOS A ELIMINAR ESTA DOS LINEAS PARA NO USAR psycopg2 porque no se puede instalar en el requirements.txt
-# En vez de crearla con esta dos lineas la vamos poner init_db.py (archivo local NO en render)
-#engine = sqlalchemy.create_engine(DATABASE_URL)
-#metadata.create_all(engine)
+# Crear tabla en la base de datos
+def crear_tabla():
+    metadata.create_all(engine)
+    print("✅ Tabla creada correctamente")
+
+# Ejecutar prueba
+if __name__ == "__main__":
+    crear_tabla()

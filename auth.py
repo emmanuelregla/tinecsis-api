@@ -1,45 +1,45 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException
-import httpx
-from pathlib import Path
+import tempfile
+import requests
 
-router = APIRouter(prefix="/auth", tags=["Autenticación"])
+router = APIRouter()
 
-@router.post("/token/manual", summary="Validar semilla firmada manualmente y obtener token")
-async def obtener_token_manual(xml: UploadFile = File(...)):
-    # Guardar temporalmente el archivo XML recibido
-    archivo_path = Path("semilla_subida.xml")
+@router.post("/auth/token/local", summary="Subir firmado.xml y obtener token con requests")
+async def obtener_token_local(file: UploadFile = File(...)):
+    # Validar extensión
+    if not file.filename.endswith(".xml"):
+        raise HTTPException(status_code=400, detail="El archivo debe ser .xml")
+
+    # Guardar archivo temporal
     try:
-        contenido = await xml.read()
-        archivo_path.write_bytes(contenido)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".xml") as tmp:
+            contenido = await file.read()
+            tmp.write(contenido)
+            tmp_path = tmp.name
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al guardar archivo: {e}")
+        raise HTTPException(status_code=500, detail=f"Error al guardar archivo temporal: {str(e)}")
 
-    # Preparar solicitud a DGII
-    url = "https://ecf.dgii.gov.do/Testecf/Autenticacion/api/Autenticacion/ValidarSemilla"
-    files = {
-        "xml": ("semilla_firmada.xml", archivo_path.open("rb"), "text/xml")
-    }
-
+    # Enviar archivo con requests
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.post(url, files=files)
-            response.raise_for_status()
-            token_response = response.json()
+        with open(tmp_path, "rb") as f:
+            files = {"file": (file.filename, f, "application/xml")}
+            response = requests.post(
+                "https://ecf.dgii.gov.do/testecf/Autenticacion/token",
+                files=files,
+                timeout=10,
+                verify=False  # ⚠️ Solo en testecf
+            )
+    except requests.RequestException as e:
+        raise HTTPException(status_code=500, detail=f"Error al conectar: {str(e)}")
 
-            # Guardar token localmente
-            with open("token.txt", "w") as f:
-                f.write(token_response["token"])
-
-            return {
-                "mensaje": "✅ Token recibido correctamente desde la DGII",
-                "token": token_response["token"],
-                "expira": token_response.get("expira"),
-                "expedido": token_response.get("expedido")
-            }
-
-    except httpx.HTTPStatusError as err:
-        contenido = err.response.text
-        raise HTTPException(status_code=400, detail=f"❌ Error DGII: {contenido}")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"❌ Error inesperado: {e}")
-
+    # Verificar respuesta
+    if response.status_code == 200:
+        return {
+            "mensaje": "✅ Token obtenido correctamente",
+            "token": response.text
+        }
+    else:
+        raise HTTPException(
+            status_code=response.status_code,
+            detail=f"Error al obtener token: {response.text}"
+        )

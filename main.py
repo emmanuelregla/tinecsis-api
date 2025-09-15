@@ -1,4 +1,7 @@
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import FastAPI, HTTPException, Security
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
@@ -87,15 +90,20 @@ async def recibir_comprobante(
             status_code=400,
             detail=f"FechaEmision en XML ({fecha_emision_xml}) no coincide con JSON ({data.FechaEmision})"
         )
-
+# ✅ Convertir string a objeto fecha
+    fecha_emision_obj = datetime.strptime(data.FechaEmision, "%Y-%m-%d").date()
     # 💾 Insertar en base de datos
-    query = comprobantes.insert().values(
-        RNCEmisor=data.RNCEmisor,
-        eNCF=data.eNCF,
-        FechaEmision=data.FechaEmision,
-        XMLBase64=data.XMLBase64
-    )
-    last_id = await database.execute(query)
+    try:
+        query = comprobantes.insert().values(
+            RNCEmisor=data.RNCEmisor,
+            eNCF=data.eNCF,
+            FechaEmision=fecha_emision_obj,
+            XMLBase64=data.XMLBase64
+        )
+        last_id = await database.execute(query)
+    except Exception as e:
+        raise HTTPException(status_code=500,detail=f"Error al insertar en base de datos:{str(e)}")
+
 
     return {
         "mensaje": "✅ Comprobante recibido correctamente",
@@ -196,4 +204,3 @@ async def solicitar_semilla():
         raise HTTPException(status_code=500, detail=f"Error al solicitar semilla: {str(e)}")
 
 app.include_router(auth_router)
-#comentario para push
