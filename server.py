@@ -2,13 +2,12 @@ import os
 import json
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse
-import requests  # <- NUEVO
+import requests  # para llamar a DGII
 
 HOST = "0.0.0.0"
 PORT = int(os.environ.get("PORT", 8001))
 
-# Ambiente DGII configurable (por defecto 'certecf').
-# Admite: 'testecf', 'certecf' o 'ecf' (producción)
+# Ambiente DGII (testecf, certecf o ecf)
 AMBIENTE = os.environ.get("ECF_AMBIENTE", "testecf").strip().lower()
 DGII_BASE = "https://ecf.dgii.gov.do"
 SEMILLA_URL = f"{DGII_BASE}/{AMBIENTE}/autenticacion/api/autenticacion/semilla"
@@ -23,20 +22,17 @@ class RequestHandler(BaseHTTPRequestHandler):
         print("%s - - %s" % (self.address_string(), format % args))
 
     def do_GET(self):
-        route = urlparse(self.path).path
-        route = route.replace("%0A", "").strip().rstrip('/') or '/'
+        route = urlparse(self.path).path.replace("%0A", "").strip().rstrip('/') or '/'
 
         if route == "/semilla":
             try:
-                # Llamada real a DGII (GET)
                 resp = requests.get(SEMILLA_URL, timeout=30)
                 if resp.status_code == 200:
-                    # Devolvemos el XML de la semilla como texto
                     self._set_headers(200)
                     self.wfile.write(json.dumps({
                         "status": "ok",
                         "ambiente": AMBIENTE,
-                        "semilla_xml": resp.text  # XML que luego firmaremos
+                        "semilla_xml": resp.text  # aquí viene el XML <Semilla>...</Semilla>
                     }).encode("utf-8"))
                 else:
                     self._set_headers(resp.status_code)
@@ -57,8 +53,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({"error": "Ruta no encontrada", "route": route}).encode("utf-8"))
 
     def do_POST(self):
-        route = urlparse(self.path).path
-        route = route.replace("%0A", "").strip().rstrip('/') or '/'
+        route = urlparse(self.path).path.replace("%0A", "").strip().rstrip('/') or '/'
         length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(length).decode("utf-8") if length > 0 else "{}"
         try:
