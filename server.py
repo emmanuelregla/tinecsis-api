@@ -74,10 +74,10 @@ class RequestHandler(BaseHTTPRequestHandler):
                 if not semilla_xml:
                     raise Exception("Debe enviar semilla_xml")
 
-                # Extraer valor dentro de <Semilla>...</Semilla>
-                match = re.search(r"<Semilla>(.+)</Semilla>", semilla_xml)
+                # Extraer valor de <valor>...</valor> dentro de <SemillaModel>
+                match = re.search(r"<valor>(.+)</valor>", semilla_xml)
                 if not match:
-                    raise Exception("No se encontró <Semilla> en XML")
+                    raise Exception("No se encontró <valor> en XML de SemillaModel")
                 semilla_valor = match.group(1).encode("utf-8")
 
                 # Decodificar certificado desde variable de entorno
@@ -99,7 +99,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                 )
                 signature_b64 = base64.b64encode(signature).decode("utf-8")
 
-                # XML firmado
+                # XML firmado para DGII
                 firmado_xml = f"""<?xml version="1.0" encoding="utf-8"?>
 <ValidarSemilla>
   <Semilla>{semilla_valor.decode("utf-8")}</Semilla>
