@@ -70,7 +70,7 @@ class SimpleHandler(BaseHTTPRequestHandler):
                 xml_doc = etree.fromstring(semilla_xml.encode("utf-8"), parser=parser)
 
                 signer = XMLSigner(
-                    method=methods.enveloped,
+                    method="enveloped",
                     signature_algorithm="rsa-sha256",
                     digest_algorithm="sha256",
                     c14n_algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315",
