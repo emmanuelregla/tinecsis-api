@@ -4,8 +4,9 @@ import base64
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from datetime import datetime
 from lxml import etree
-from signxml import XMLSigner
+from signxml import XMLSigner, methods
 from cryptography.hazmat.primitives.serialization import pkcs12
+
 
 PORT = int(os.getenv("PORT", 8000))
 
@@ -70,7 +71,7 @@ class SimpleHandler(BaseHTTPRequestHandler):
                 xml_doc = etree.fromstring(semilla_xml.encode("utf-8"), parser=parser)
 
                 signer = XMLSigner(
-                    method="enveloped",
+                    method=methods.enveloped,
                     signature_algorithm="rsa-sha256",
                     digest_algorithm="sha256",
                     c14n_algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315",
