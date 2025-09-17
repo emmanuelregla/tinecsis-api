@@ -1,153 +1,120 @@
 import os
 import json
-from http.server import BaseHTTPRequestHandler, HTTPServer
-from urllib.parse import urlparse
-import requests
 import base64
-import re
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from datetime import datetime
+from lxml import etree
+from signxml import XMLSigner
 from cryptography.hazmat.primitives.serialization import pkcs12
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.asymmetric import padding
-from cryptography.hazmat.backends import default_backend
 
-HOST = "0.0.0.0"
-PORT = int(os.environ.get("PORT", 8001))
+PORT = int(os.getenv("PORT", 8000))
 
-# Ambiente DGII configurable (default testecf)
-AMBIENTE = os.environ.get("ECF_AMBIENTE", "testecf").strip().lower()
-DGII_BASE = "https://ecf.dgii.gov.do"
-SEMILLA_URL = f"{DGII_BASE}/{AMBIENTE}/autenticacion/api/autenticacion/semilla"
-VALIDAR_URL = f"{DGII_BASE}/{AMBIENTE}/autenticacion/api/autenticacion/validarsemilla"
+# Cargar certificado desde variable CERT_B64
+def load_cert():
+    cert_b64 = os.getenv("CERT_B64")
+    cert_pass = os.getenv("CERT_PASS")
+    if not cert_b64 or not cert_pass:
+        raise ValueError("CERT_B64 o CERT_PASS no configurados")
 
-class RequestHandler(BaseHTTPRequestHandler):
-    def _set_headers(self, status_code=200):
-        self.send_response(status_code)
+    cert_bytes = base64.b64decode(cert_b64)
+    private_key, cert, _ = pkcs12.load_key_and_certificates(
+        cert_bytes, cert_pass.encode()
+    )
+    return private_key, cert
+
+
+class SimpleHandler(BaseHTTPRequestHandler):
+    def _set_headers(self, status=200):
+        self.send_response(status)
         self.send_header("Content-type", "application/json")
         self.end_headers()
 
-    def log_message(self, format, *args):
-        print("%s - - %s" % (self.address_string(), format % args))
-
     def do_GET(self):
-        route = urlparse(self.path).path.replace("%0A", "").strip().rstrip('/') or '/'
+        if self.path == "/semilla":
+            # Generar XML de semilla
+            fecha = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+            valor = base64.b64encode(os.urandom(48)).decode("utf-8")
 
-        if route == "/semilla":
-            try:
-                resp = requests.get(SEMILLA_URL, timeout=30)
-                if resp.status_code == 200:
-                    self._set_headers(200)
-                    self.wfile.write(json.dumps({
-                        "status": "ok",
-                        "ambiente": AMBIENTE,
-                        "semilla_xml": resp.text
-                    }).encode("utf-8"))
-                else:
-                    self._set_headers(resp.status_code)
-                    self.wfile.write(json.dumps({
-                        "error": "DGII no devolvió 200 en /semilla",
-                        "status_code": resp.status_code,
-                        "body_preview": resp.text[:500]
-                    }).encode("utf-8"))
-            except Exception as e:
-                self._set_headers(500)
-                self.wfile.write(json.dumps({
-                    "error": "Fallo al llamar /semilla de DGII",
-                    "detail": str(e),
-                    "url": SEMILLA_URL
-                }).encode("utf-8"))
+            semilla_xml = f"""<?xml version="1.0" encoding="utf-8"?>
+<SemillaModel xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <valor>{valor}</valor>
+  <fecha>{fecha}</fecha>
+</SemillaModel>"""
+
+            self._set_headers()
+            self.wfile.write(json.dumps({"semilla_xml": semilla_xml}).encode("utf-8"))
+
         else:
             self._set_headers(404)
-            self.wfile.write(json.dumps({"error": "Ruta no encontrada", "route": route}).encode("utf-8"))
+            self.wfile.write(
+                json.dumps({"error": "Ruta no encontrada", "route": self.path}).encode(
+                    "utf-8"
+                )
+            )
 
     def do_POST(self):
-        route = urlparse(self.path).path.replace("%0A", "").strip().rstrip('/') or '/'
-        length = int(self.headers.get("Content-Length", 0))
-        body = self.rfile.read(length).decode("utf-8") if length > 0 else "{}"
-        try:
-            data = json.loads(body)
-        except json.JSONDecodeError:
-            data = {}
-
-        if route == "/token":
+        if self.path == "/token":
+            content_length = int(self.headers["Content-Length"])
+            post_data = self.rfile.read(content_length)
             try:
-                semilla_xml = data.get("semilla_xml")
+                payload = json.loads(post_data)
+                semilla_xml = payload.get("semilla_xml")
+
                 if not semilla_xml:
-                    raise Exception("Debe enviar semilla_xml")
+                    raise ValueError("Falta semilla_xml en el body")
 
-                # Extraer valor de <valor>...</valor> dentro de <SemillaModel>
-                match = re.search(r"<valor>(.+)</valor>", semilla_xml)
-                if not match:
-                    raise Exception("No se encontró <valor> en XML de SemillaModel")
-                semilla_valor = match.group(1).encode("utf-8")
+                # Firmar el XML de la semilla
+                private_key, cert = load_cert()
 
-                # Decodificar certificado desde variable de entorno
-                cert_b64 = os.environ.get("CERT_B64")
-                cert_pass = os.environ.get("CERT_PASS", "").encode("utf-8")
-                if not cert_b64 or not cert_pass:
-                    raise Exception("CERT_B64 o CERT_PASS no configurados en Railway")
+                parser = etree.XMLParser(remove_blank_text=True)
+                xml_doc = etree.fromstring(semilla_xml.encode("utf-8"), parser=parser)
 
-                cert_bytes = base64.b64decode(cert_b64)
-                private_key, cert, add_certs = pkcs12.load_key_and_certificates(
-                    cert_bytes, cert_pass, backend=default_backend()
+                signer = XMLSigner(
+                    method=methods.enveloped,
+                    signature_algorithm="rsa-sha256",
+                    digest_algorithm="sha256",
+                    c14n_algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315",
                 )
 
-                # Firmar la semilla con SHA256 + PKCS#1 v1.5
-                signature = private_key.sign(
-                    semilla_valor,
-                    padding.PKCS1v15(),
-                    hashes.SHA256()
+                signed_root = signer.sign(xml_doc, key=private_key, cert=cert)
+
+                signed_xml = etree.tostring(
+                    signed_root, pretty_print=True, xml_declaration=True, encoding="utf-8"
+                ).decode("utf-8")
+
+                # 👉 Por ahora solo devolvemos el XML firmado para comparar
+                self._set_headers()
+                self.wfile.write(
+                    json.dumps(
+                        {
+                            "status": "ok",
+                            "signed_xml": signed_xml[:500] + "..."  # preview
+                        }
+                    ).encode("utf-8")
                 )
-                signature_b64 = base64.b64encode(signature).decode("utf-8")
-
-                # XML firmado para DGII
-                firmado_xml = f"""<?xml version="1.0" encoding="utf-8"?>
-<ValidarSemilla>
-  <Semilla>{semilla_valor.decode("utf-8")}</Semilla>
-  <Firma>{signature_b64}</Firma>
-</ValidarSemilla>"""
-
-                # Enviar a DGII /validarsemilla
-                headers = {"Content-Type": "application/xml"}
-                resp = requests.post(VALIDAR_URL, data=firmado_xml, headers=headers, timeout=30)
-
-                if resp.status_code == 200:
-                    self._set_headers()
-                    self.wfile.write(json.dumps({
-                        "status": "ok",
-                        "token_response": resp.text
-                    }).encode("utf-8"))
-                else:
-                    self._set_headers(resp.status_code)
-                    self.wfile.write(json.dumps({
-                        "error": "DGII no devolvió 200 en /validarsemilla",
-                        "status_code": resp.status_code,
-                        "body_preview": resp.text[:500]
-                    }).encode("utf-8"))
 
             except Exception as e:
                 self._set_headers(500)
-                self.wfile.write(json.dumps({
-                    "error": "Error procesando token",
-                    "detail": str(e)
-                }).encode("utf-8"))
-
-        elif route == "/enviar":
-            self._set_headers()
-            self.wfile.write(json.dumps({
-                "status": "ok",
-                "msg": "Aquí enviamos el comprobante (mock, implementaremos real luego)",
-                "echo": data
-            }).encode("utf-8"))
+                self.wfile.write(
+                    json.dumps(
+                        {"error": "Error procesando token", "detail": str(e)}
+                    ).encode("utf-8")
+                )
         else:
             self._set_headers(404)
-            self.wfile.write(json.dumps({"error": "Ruta no encontrada", "route": route}).encode("utf-8"))
+            self.wfile.write(
+                json.dumps({"error": "Ruta no encontrada", "route": self.path}).encode(
+                    "utf-8"
+                )
+            )
+
 
 def run():
-    server_address = (HOST, PORT)
-    httpd = HTTPServer(server_address, RequestHandler)
-    print(f"Servidor corriendo en http://{HOST}:{PORT} (AMBIENTE={AMBIENTE})")
+    server_address = ("", PORT)
+    httpd = HTTPServer(server_address, SimpleHandler)
+    print(f"Servidor corriendo en http://0.0.0.0:{PORT}")
     httpd.serve_forever()
+
 
 if __name__ == "__main__":
     run()
-    
