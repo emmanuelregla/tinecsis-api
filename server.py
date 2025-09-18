@@ -29,8 +29,8 @@ def load_cert():
     if not private_key or not cert:
         raise ValueError("No se pudo cargar clave/cert del P12")
 
-    # Exportar a PEM en bytes (no str)
-    cert_pem = cert.public_bytes(encoding=serialization.Encoding.PEM)
+    # Exportar como string PEM (lo que signxml espera)
+    cert_pem = cert.public_bytes(encoding=serialization.Encoding.PEM).decode("utf-8")
     return private_key, cert_pem
 
 def strip_ds_prefix_to_default(sig_root):
@@ -172,4 +172,3 @@ def run():
 if __name__ == "__main__":
     run()
 
-    
