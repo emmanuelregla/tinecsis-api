@@ -6,6 +6,8 @@ from datetime import datetime
 from lxml import etree
 from signxml import XMLSigner, methods
 from cryptography.hazmat.primitives.serialization import pkcs12
+from cryptography.hazmat.primitives import serialization
+
 
 
 PORT = int(os.getenv("PORT", 8000))
@@ -21,7 +23,10 @@ def load_cert():
     private_key, cert, _ = pkcs12.load_key_and_certificates(
         cert_bytes, cert_pass.encode()
     )
-    return private_key, cert
+
+    cert_pem = cert.public_bytes(encoding=serialization.Encoding.DER)
+    return private_key, cert_pem
+
 
 
 class SimpleHandler(BaseHTTPRequestHandler):
@@ -70,6 +75,8 @@ class SimpleHandler(BaseHTTPRequestHandler):
                 parser = etree.XMLParser(remove_blank_text=True)
                 xml_doc = etree.fromstring(semilla_xml.encode("utf-8"), parser=parser)
 
+                private_key, cert_der = load_cert()
+
                 signer = XMLSigner(
                     method=methods.enveloped,
                     signature_algorithm="rsa-sha256",
@@ -77,7 +84,7 @@ class SimpleHandler(BaseHTTPRequestHandler):
                     c14n_algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315",
                 )
 
-                signed_root = signer.sign(xml_doc, key=private_key, cert=cert)
+                signed_root = signer.sign(xml_doc, key=private_key, cert=cert_der)
 
                 signed_xml = etree.tostring(
                     signed_root, pretty_print=True, xml_declaration=True, encoding="utf-8"
