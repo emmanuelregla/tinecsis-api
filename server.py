@@ -23,8 +23,9 @@ def load_pem_key_cert():
     if not key_b64 or not cert_b64:
         raise ValueError("Faltan PRIVATE_KEY_B64 o CERT_B64")
 
-    key_pem = base64.b64decode(key_b64).decode("utf-8")
-    cert_pem = base64.b64decode(cert_b64).decode("utf-8")
+    # 🔑 Clave privada y certificado en bytes PEM
+    key_pem = base64.b64decode(key_b64)
+    cert_pem = base64.b64decode(cert_b64)
     return key_pem, cert_pem
 
 def strip_ds_prefix_to_default(sig_root):
@@ -109,8 +110,8 @@ class Handler(BaseHTTPRequestHandler):
                     digest_algorithm="sha256",
                     c14n_algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315",
                 )
-                signed_root = signer.sign(xml_doc, key=key_pem, cert=cert_pem)
 
+                signed_root = signer.sign(xml_doc, key=key_pem, cert=cert_pem)
                 signed_root = strip_ds_prefix_to_default(signed_root)
 
                 firmado_xml = etree.tostring(
