@@ -6,8 +6,7 @@ from urllib.parse import urlparse
 import requests
 from lxml import etree
 from signxml import XMLSigner, methods
-from cryptography.hazmat.primitives.serialization import pkcs12
-from cryptography.hazmat.primitives import serialization
+
 
 
 PORT = int(os.getenv("PORT", 8000))
@@ -18,21 +17,15 @@ SEMILLA_URL = f"{DGII_BASE}/{AMBIENTE}/autenticacion/api/autenticacion/semilla"
 VALIDAR_URL = f"{DGII_BASE}/{AMBIENTE}/autenticacion/api/autenticacion/validarsemilla"
 XMLSIG_NS = "http://www.w3.org/2000/09/xmldsig#"
 
-def load_cert():
+def load_pem_key_cert():
+    key_b64 = os.getenv("PRIVATE_KEY_B64")
     cert_b64 = os.getenv("CERT_B64")
-    cert_pass = os.getenv("CERT_PASS")
-    if not cert_b64 or not cert_pass:
-        raise ValueError("CERT_B64 o CERT_PASS no configurados")
+    if not key_b64 or not cert_b64:
+        raise ValueError("Faltan PRIVATE_KEY_B64 o CERT_B64")
 
-    cert_bytes = base64.b64decode(cert_b64)
-    private_key, cert, _ = pkcs12.load_key_and_certificates(cert_bytes, cert_pass.encode())
-    if not private_key or not cert:
-        raise ValueError("No se pudo cargar clave/cert del P12")
-
-    # Exportar certificado a PEM (string UTF-8, que signxml espera)
-    cert_pem = cert.public_bytes(encoding=serialization.Encoding.PEM).decode("utf-8")
-
-    return private_key, cert_pem
+    key_pem = base64.b64decode(key_b64).decode("utf-8")
+    cert_pem = base64.b64decode(cert_b64).decode("utf-8")
+    return key_pem, cert_pem
 
 def strip_ds_prefix_to_default(sig_root):
     sig_elems = sig_root.xpath("//*[local-name()='Signature' and namespace-uri()=$ns]", ns={"ns": XMLSIG_NS})
@@ -40,7 +33,7 @@ def strip_ds_prefix_to_default(sig_root):
         return sig_root
     sig = sig_elems[0]
 
-    # Crear Signature sin prefijo (namespace por defecto)
+
     new_sig = etree.Element(f"{{{XMLSIG_NS}}}Signature", nsmap={None: XMLSIG_NS})
     for child in list(sig):
         new_sig.append(child)
@@ -109,14 +102,14 @@ class Handler(BaseHTTPRequestHandler):
                 parser = etree.XMLParser(remove_blank_text=True)
                 xml_doc = etree.fromstring(semilla_xml.encode("utf-8"), parser=parser)
 
-                private_key, cert_pem = load_cert()
+                key_pem, cert_pem = load_pem_key_cert()
                 signer = XMLSigner(
                     method=methods.enveloped,
                     signature_algorithm="rsa-sha256",
                     digest_algorithm="sha256",
                     c14n_algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315",
                 )
-                signed_root = signer.sign(xml_doc, key=private_key, cert=cert_pem)
+                signed_root = signer.sign(xml_doc, key=key_pem, cert=cert_pem)
 
                 signed_root = strip_ds_prefix_to_default(signed_root)
 
