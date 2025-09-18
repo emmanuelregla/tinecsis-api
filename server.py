@@ -81,10 +81,11 @@ class SimpleHandler(BaseHTTPRequestHandler):
 
                 signed_root = signer.sign(xml_doc, key=private_key, cert=cert_pem)
 
-                # 👉 Quitar prefijo "ds:" y dejar namespace por defecto
+               # 👉 Remapear namespace para quitar "ds:"
+                nsmap = {None: "http://www.w3.org/2000/09/xmldsig#"}  # default namespace
                 for elem in signed_root.xpath("//*[namespace-uri()='http://www.w3.org/2000/09/xmldsig#']"):
-                    if elem.tag.startswith("{http://www.w3.org/2000/09/xmldsig#}"):
-                        elem.tag = elem.tag.replace("{http://www.w3.org/2000/09/xmldsig#}", "")
+                    elem.tag = etree.QName("http://www.w3.org/2000/09/xmldsig#", etree.QName(elem).localname)
+                signed_root = etree.ElementTree(signed_root).getroot()
                 etree.cleanup_namespaces(signed_root)
 
                 signed_xml = etree.tostring(
