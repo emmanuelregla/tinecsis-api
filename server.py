@@ -5,10 +5,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from datetime import datetime
 from lxml import etree
 from signxml import XMLSigner, methods
-from cryptography.hazmat.primitives.serialization import pkcs12
-from cryptography.hazmat.primitives import serialization
-
-
+from cryptography.hazmat.primitives.serialization import pkcs12, serialization
 
 PORT = int(os.getenv("PORT", 8000))
 
@@ -24,6 +21,7 @@ def load_cert():
         cert_bytes, cert_pass.encode()
     )
 
+    # Convertir cert a PEM (texto Base64 con encabezados)
     cert_pem = cert.public_bytes(encoding=serialization.Encoding.PEM)
     return private_key, cert_pem.decode("utf-8")
 
@@ -69,12 +67,10 @@ class SimpleHandler(BaseHTTPRequestHandler):
                     raise ValueError("Falta semilla_xml en el body")
 
                 # Firmar el XML de la semilla
-                private_key, cert = load_cert()
+                private_key, cert_pem = load_cert()
 
                 parser = etree.XMLParser(remove_blank_text=True)
                 xml_doc = etree.fromstring(semilla_xml.encode("utf-8"), parser=parser)
-
-                private_key, cert_der = load_cert()
 
                 signer = XMLSigner(
                     method=methods.enveloped,
@@ -83,19 +79,25 @@ class SimpleHandler(BaseHTTPRequestHandler):
                     c14n_algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315",
                 )
 
-                signed_root = signer.sign(xml_doc, key=private_key, cert=cert_der)
+                signed_root = signer.sign(xml_doc, key=private_key, cert=cert_pem)
+
+                # 👉 Quitar prefijo "ds:" y dejar namespace por defecto
+                for elem in signed_root.xpath("//*[namespace-uri()='http://www.w3.org/2000/09/xmldsig#']"):
+                    if elem.tag.startswith("{http://www.w3.org/2000/09/xmldsig#}"):
+                        elem.tag = elem.tag.replace("{http://www.w3.org/2000/09/xmldsig#}", "")
+                etree.cleanup_namespaces(signed_root)
 
                 signed_xml = etree.tostring(
                     signed_root, pretty_print=True, xml_declaration=True, encoding="utf-8"
                 ).decode("utf-8")
 
-                # 👉 Por ahora solo devolvemos el XML firmado para comparar
+                # Por ahora devolvemos el XML firmado completo
                 self._set_headers()
                 self.wfile.write(
                     json.dumps(
                         {
                             "status": "ok",
-                            "signed_xml": signed_xml[:500] + "..."  # preview
+                            "signed_xml": signed_xml
                         }
                     ).encode("utf-8")
                 )
@@ -125,3 +127,4 @@ def run():
 
 if __name__ == "__main__":
     run()
+
