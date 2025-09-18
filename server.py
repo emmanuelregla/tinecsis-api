@@ -8,7 +8,7 @@ from lxml import etree
 from signxml import XMLSigner, methods
 from cryptography.hazmat.primitives.serialization import pkcs12
 from cryptography.hazmat.primitives import serialization
-
+from OpenSSL import crypto  # 👈 Nuevo import
 
 PORT = int(os.getenv("PORT", 8000))
 
@@ -29,12 +29,15 @@ def load_cert():
     if not private_key or not cert:
         raise ValueError("No se pudo cargar clave/cert del P12")
 
-    # Exportar como string PEM (lo que signxml espera)
-    cert_pem = cert.public_bytes(encoding=serialization.Encoding.PEM).decode("utf-8")
-    return private_key, cert_pem
+    # Exportar certificado a PEM (bytes)
+    cert_pem = cert.public_bytes(encoding=serialization.Encoding.PEM)
+
+    # Convertir a objeto OpenSSL.crypto.X509 (lo que signxml espera mejor)
+    x509 = crypto.load_certificate(crypto.FILETYPE_PEM, cert_pem)
+
+    return private_key, x509
 
 def strip_ds_prefix_to_default(sig_root):
-
     sig_elems = sig_root.xpath("//*[local-name()='Signature' and namespace-uri()=$ns]", ns={"ns": XMLSIG_NS})
     if not sig_elems:
         return sig_root
@@ -42,20 +45,15 @@ def strip_ds_prefix_to_default(sig_root):
 
     # Crear Signature sin prefijo (namespace por defecto)
     new_sig = etree.Element(f"{{{XMLSIG_NS}}}Signature", nsmap={None: XMLSIG_NS})
-
-
     for child in list(sig):
         new_sig.append(child)
-
 
     parent = sig.getparent()
     parent.replace(sig, new_sig)
 
-
     for elem in new_sig.xpath(".//*[namespace-uri()=$ns]", ns={"ns": XMLSIG_NS}):
         qn = etree.QName(elem)
         elem.tag = f"{{{XMLSIG_NS}}}{qn.localname}"
-
 
     etree.cleanup_namespaces(sig_root)
     return sig_root
@@ -111,29 +109,23 @@ class Handler(BaseHTTPRequestHandler):
                 if not semilla_xml:
                     raise ValueError("Debe enviar semilla_xml (XML de DGII)")
 
-
                 parser = etree.XMLParser(remove_blank_text=True)
                 xml_doc = etree.fromstring(semilla_xml.encode("utf-8"), parser=parser)
 
-
-                private_key, cert_pem = load_cert()
+                private_key, cert_x509 = load_cert()
                 signer = XMLSigner(
                     method=methods.enveloped,
                     signature_algorithm="rsa-sha256",
                     digest_algorithm="sha256",
                     c14n_algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315",
                 )
-
-                signed_root = signer.sign(xml_doc, key=private_key, cert=cert_pem)
-
+                signed_root = signer.sign(xml_doc, key=private_key, cert=cert_x509)
 
                 signed_root = strip_ds_prefix_to_default(signed_root)
-
 
                 firmado_xml = etree.tostring(
                     signed_root, pretty_print=False, encoding="utf-8", xml_declaration=True
                 ).decode("utf-8")
-
 
                 headers = {"Content-Type": "application/xml"}
                 resp = requests.post(VALIDAR_URL, data=firmado_xml.encode("utf-8"), headers=headers, timeout=30)
@@ -168,7 +160,5 @@ def run():
     print(f"Servidor corriendo en http://0.0.0.0:{PORT} AMBIENTE={AMBIENTE}")
     httpd.serve_forever()
 
-
 if __name__ == "__main__":
     run()
-
