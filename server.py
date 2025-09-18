@@ -23,7 +23,7 @@ def load_cert():
         cert_bytes, cert_pass.encode()
     )
 
-    # Convertir cert a PEM (texto Base64 con encabezados)
+    # Convertir cert a PEM
     cert_pem = cert.public_bytes(encoding=serialization.Encoding.PEM)
     return private_key, cert_pem.decode("utf-8")
 
@@ -36,7 +36,7 @@ class SimpleHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/semilla":
-            # Generar XML de semilla
+
             fecha = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
             valor = base64.b64encode(os.urandom(48)).decode("utf-8")
 
@@ -68,7 +68,7 @@ class SimpleHandler(BaseHTTPRequestHandler):
                 if not semilla_xml:
                     raise ValueError("Falta semilla_xml en el body")
 
-                # Firmar el XML de la semilla
+
                 private_key, cert_pem = load_cert()
 
                 parser = etree.XMLParser(remove_blank_text=True)
@@ -81,30 +81,27 @@ class SimpleHandler(BaseHTTPRequestHandler):
                     c14n_algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315",
                 )
 
-                # 👉 Remover prefijo "ds:" y forzar namespace por defecto
+                signed_root = signer.sign(xml_doc, key=private_key, cert=cert_pem)
+
+                # 👉 Forzar namespace por defecto y quitar prefijo ds:
                 for elem in signed_root.xpath("//*[namespace-uri()='http://www.w3.org/2000/09/xmldsig#']"):
                     qname = etree.QName(elem)
                     elem.tag = f"{{http://www.w3.org/2000/09/xmldsig#}}{qname.localname}"
 
-                # Eliminar prefijos sobrantes
+
                 etree.cleanup_namespaces(signed_root)
 
-                # Forzar el root <Signature> a usar namespace por defecto
+                # Forzar que la etiqueta raíz de la firma sea <Signature xmlns="...">
                 for sig in signed_root.xpath("//ds:Signature", namespaces={"ds": "http://www.w3.org/2000/09/xmldsig#"}):
                     sig.tag = "{http://www.w3.org/2000/09/xmldsig#}Signature"
 
-               # 👉 Remapear namespace para quitar "ds:"
-                nsmap = {None: "http://www.w3.org/2000/09/xmldsig#"}  # default namespace
-                for elem in signed_root.xpath("//*[namespace-uri()='http://www.w3.org/2000/09/xmldsig#']"):
-                    elem.tag = etree.QName("http://www.w3.org/2000/09/xmldsig#", etree.QName(elem).localname)
-                signed_root = etree.ElementTree(signed_root).getroot()
-                etree.cleanup_namespaces(signed_root)
+
 
                 signed_xml = etree.tostring(
                     signed_root, pretty_print=True, xml_declaration=True, encoding="utf-8"
                 ).decode("utf-8")
 
-                # Por ahora devolvemos el XML firmado completo
+
                 self._set_headers()
                 self.wfile.write(
                     json.dumps(
