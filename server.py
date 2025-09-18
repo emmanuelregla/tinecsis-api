@@ -81,7 +81,17 @@ class SimpleHandler(BaseHTTPRequestHandler):
                     c14n_algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315",
                 )
 
-                signed_root = signer.sign(xml_doc, key=private_key, cert=cert_pem)
+                # 👉 Remover prefijo "ds:" y forzar namespace por defecto
+                for elem in signed_root.xpath("//*[namespace-uri()='http://www.w3.org/2000/09/xmldsig#']"):
+                    qname = etree.QName(elem)
+                    elem.tag = f"{{http://www.w3.org/2000/09/xmldsig#}}{qname.localname}"
+
+                # Eliminar prefijos sobrantes
+                etree.cleanup_namespaces(signed_root)
+
+                # Forzar el root <Signature> a usar namespace por defecto
+                for sig in signed_root.xpath("//ds:Signature", namespaces={"ds": "http://www.w3.org/2000/09/xmldsig#"}):
+                    sig.tag = "{http://www.w3.org/2000/09/xmldsig#}Signature"
 
                # 👉 Remapear namespace para quitar "ds:"
                 nsmap = {None: "http://www.w3.org/2000/09/xmldsig#"}  # default namespace
