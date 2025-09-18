@@ -24,9 +24,8 @@ def load_cert():
         cert_bytes, cert_pass.encode()
     )
 
-    cert_pem = cert.public_bytes(encoding=serialization.Encoding.DER)
-    return private_key, cert_pem
-
+    cert_pem = cert.public_bytes(encoding=serialization.Encoding.PEM)
+    return private_key, cert_pem.decode("utf-8")
 
 
 class SimpleHandler(BaseHTTPRequestHandler):
