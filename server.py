@@ -29,37 +29,34 @@ def load_cert():
     if not private_key or not cert:
         raise ValueError("No se pudo cargar clave/cert del P12")
 
-    cert_pem = cert.public_bytes(encoding=serialization.Encoding.PEM).decode("utf-8")
+    # Exportar a PEM en bytes (no str)
+    cert_pem = cert.public_bytes(encoding=serialization.Encoding.PEM)
     return private_key, cert_pem
 
 def strip_ds_prefix_to_default(sig_root):
-    """
-    Reemplaza <ds:Signature xmlns:ds="..."> por <Signature xmlns="...">,
-    y lo mismo para todos los hijos del bloque de firma.
-    """
-    # Encuentra el nodo Signature con namespace xmldsig
+
     sig_elems = sig_root.xpath("//*[local-name()='Signature' and namespace-uri()=$ns]", ns={"ns": XMLSIG_NS})
     if not sig_elems:
         return sig_root
     sig = sig_elems[0]
 
-    # Crea un nuevo Signature con namespace por defecto (sin prefijo)
+    # Crear Signature sin prefijo (namespace por defecto)
     new_sig = etree.Element(f"{{{XMLSIG_NS}}}Signature", nsmap={None: XMLSIG_NS})
 
-    # Mueve (no copia profunda) los hijos al nuevo Signature
+
     for child in list(sig):
         new_sig.append(child)
 
-    # Reemplaza en el padre
+
     parent = sig.getparent()
     parent.replace(sig, new_sig)
 
-    # Asegura que todos los descendientes usen el mismo ns por defecto
+
     for elem in new_sig.xpath(".//*[namespace-uri()=$ns]", ns={"ns": XMLSIG_NS}):
         qn = etree.QName(elem)
         elem.tag = f"{{{XMLSIG_NS}}}{qn.localname}"
 
-    # Limpia prefijos sobrantes
+
     etree.cleanup_namespaces(sig_root)
     return sig_root
 
@@ -114,11 +111,11 @@ class Handler(BaseHTTPRequestHandler):
                 if not semilla_xml:
                     raise ValueError("Debe enviar semilla_xml (XML de DGII)")
 
-                # Parsear XML de la semilla
+
                 parser = etree.XMLParser(remove_blank_text=True)
                 xml_doc = etree.fromstring(semilla_xml.encode("utf-8"), parser=parser)
 
-                # Firmar con XMLDSig (enveloped)
+
                 private_key, cert_pem = load_cert()
                 signer = XMLSigner(
                     method=methods.enveloped,
@@ -129,15 +126,15 @@ class Handler(BaseHTTPRequestHandler):
 
                 signed_root = signer.sign(xml_doc, key=private_key, cert=cert_pem)
 
-                # Forzar namespace por defecto (sin prefijo ds:)
+
                 signed_root = strip_ds_prefix_to_default(signed_root)
 
-                # Serializar SIN pretty print (sin espacios/indent)
+
                 firmado_xml = etree.tostring(
                     signed_root, pretty_print=False, encoding="utf-8", xml_declaration=True
                 ).decode("utf-8")
 
-                # Enviar a DGII /validarsemilla
+
                 headers = {"Content-Type": "application/xml"}
                 resp = requests.post(VALIDAR_URL, data=firmado_xml.encode("utf-8"), headers=headers, timeout=30)
 
@@ -145,8 +142,7 @@ class Handler(BaseHTTPRequestHandler):
                     self._json(200)
                     self.wfile.write(json.dumps({
                         "status": "ok",
-                        "token_response": resp.text,
-                        "firmado_preview": firmado_xml[:300] + ("..." if len(firmado_xml)>300 else "")
+                        "token_response": resp.text
                     }).encode("utf-8"))
                 else:
                     self._json(resp.status_code)
@@ -175,4 +171,5 @@ def run():
 
 if __name__ == "__main__":
     run()
+
     
