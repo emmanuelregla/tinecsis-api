@@ -23,9 +23,9 @@ def load_pem_key_cert():
     if not key_b64 or not cert_b64:
         raise ValueError("Faltan PRIVATE_KEY_B64 o CERT_B64")
 
-    # 🔑 Clave privada y certificado en bytes PEM
-    key_pem = base64.b64decode(key_b64)
-    cert_pem = base64.b64decode(cert_b64)
+    # Decodificar a string plano UTF-8
+    key_pem = base64.b64decode(key_b64).decode("utf-8").strip()
+    cert_pem = base64.b64decode(cert_b64).decode("utf-8").strip()
     return key_pem, cert_pem
 
 def strip_ds_prefix_to_default(sig_root):
@@ -34,7 +34,7 @@ def strip_ds_prefix_to_default(sig_root):
         return sig_root
     sig = sig_elems[0]
 
-
+    # Crear Signature sin prefijo (namespace por defecto)
     new_sig = etree.Element(f"{{{XMLSIG_NS}}}Signature", nsmap={None: XMLSIG_NS})
     for child in list(sig):
         new_sig.append(child)
